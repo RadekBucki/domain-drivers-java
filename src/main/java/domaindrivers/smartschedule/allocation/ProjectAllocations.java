@@ -53,29 +53,33 @@ class ProjectAllocations {
     }
 
     Optional<CapabilitiesAllocated> allocate(ResourceId resourceId, Capability capability, TimeSlot requestedSlot, Instant when) {
-        if (nothingAllocated() || !withinProjectTimeSlot(requestedSlot)) {
+        AllocatedCapability allocatedCapability = new AllocatedCapability(resourceId.id(), capability, requestedSlot);
+        Allocations newAllocations = allocations.add(allocatedCapability);
+
+        if (isNothingAllocated(newAllocations) || !withinProjectTimeSlot(requestedSlot)) {
             return Optional.empty();
         }
-        return Optional.of(new CapabilitiesAllocated(null, null, null, null, null));
+
+        allocations = allocations.add(allocatedCapability);
+        return Optional.of(new CapabilitiesAllocated(allocatedCapability.allocatedCapabilityID(), allocatedCapability.allocatedCapabilityID(), projectId, missingDemands(), when));
     }
 
-    private boolean nothingAllocated() {
-        return false;
+    private boolean isNothingAllocated(Allocations newAllocations) {
+        return allocations.equals(newAllocations);
     }
 
     private boolean withinProjectTimeSlot(TimeSlot requestedSlot) {
-        return false;
+        return !hasTimeSlot() || timeSlot.within(requestedSlot);
     }
 
     Optional<CapabilityReleased> release(UUID allocatedCapabilityId, TimeSlot timeSlot, Instant when) {
-        if (nothingReleased()) {
+        Allocations newAllocations = allocations.remove(allocatedCapabilityId, timeSlot);
+        if (newAllocations.equals(allocations)) {
             return Optional.empty();
         }
-        return Optional.of(new CapabilityReleased(null, null, null));
-    }
 
-    private boolean nothingReleased() {
-        return false;
+        allocations = newAllocations;
+        return Optional.of(new CapabilityReleased(projectId, missingDemands(), when));
     }
 
     Demands missingDemands() {
