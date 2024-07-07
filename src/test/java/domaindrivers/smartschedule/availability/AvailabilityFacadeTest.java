@@ -1,34 +1,49 @@
 package domaindrivers.smartschedule.availability;
 
+import domaindrivers.smartschedule.TestDbConfiguration;
+import domaindrivers.smartschedule.allocation.ResourceId;
 import domaindrivers.smartschedule.shared.timeslot.TimeSlot;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.jdbc.Sql;
 
 import java.time.temporal.ChronoUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class AvailabilityFacadeTest {
+@SpringBootTest(classes = {TestDbConfiguration.class})
+@Sql(scripts = "classpath:schema-availability.sql")
+class AvailabilityFacadeTest {
 
-    AvailabilityFacade availabilityFacade = new AvailabilityFacade();
+    @Autowired
+    AvailabilityFacade availabilityFacade;
+
+    @Autowired
+    ResourceAvailabilityRepository resourceAvailabilityRepository;
 
     @Test
     void canCreateAvailabilitySlots() {
         //given
-        ResourceAvailabilityId resourceId = ResourceAvailabilityId.newOne();
+        ResourceId resourceId = ResourceId.newOne();
         TimeSlot oneDay = TimeSlot.createDailyTimeSlotAtUTC(2021, 1, 1);
 
         //when
         availabilityFacade.createResourceSlots(resourceId, oneDay);
 
         //then
-        //todo check that availability(ies) was/were created
-
+        assertEquals(
+                oneDay.blockedBlocksCount(),
+                resourceAvailabilityRepository
+                        .findAllByResourceIdAndTimeSlotAndResourceStatus(resourceId, oneDay, ResourceStatus.AVAILABLE)
+                        .size()
+        );
     }
 
     @Test
     void canBlockAvailabilities() {
         //given
-        ResourceAvailabilityId resourceId = ResourceAvailabilityId.newOne();
+        ResourceId resourceId = ResourceId.newOne();
         TimeSlot oneDay = TimeSlot.createDailyTimeSlotAtUTC(2021, 1, 1);
         Owner owner = Owner.newOne();
         availabilityFacade.createResourceSlots(resourceId, oneDay);
@@ -38,13 +53,18 @@ public class AvailabilityFacadeTest {
 
         //then
         assertTrue(result);
-        //todo check that can't be taken
+        assertEquals(
+                oneDay.blockedBlocksCount(),
+                resourceAvailabilityRepository
+                        .findAllByResourceIdAndTimeSlotAndResourceStatus(resourceId, oneDay, ResourceStatus.BLOCKED)
+                        .size()
+        );
     }
 
     @Test
     void canDisableAvailabilities() {
         //given
-        ResourceAvailabilityId resourceId = ResourceAvailabilityId.newOne();
+        ResourceId resourceId = ResourceId.newOne();
         TimeSlot oneDay = TimeSlot.createDailyTimeSlotAtUTC(2021, 1, 1);
         Owner owner = Owner.newOne();
         availabilityFacade.createResourceSlots(resourceId, oneDay);
@@ -54,13 +74,18 @@ public class AvailabilityFacadeTest {
 
         //then
         assertTrue(result);
-        //todo check that are disabled
+        assertEquals(
+                oneDay.blockedBlocksCount(),
+                resourceAvailabilityRepository
+                        .findAllByResourceIdAndTimeSlotAndResourceStatus(resourceId, oneDay, ResourceStatus.DISABLED)
+                        .size()
+        );
     }
 
     @Test
     void cantBlockEvenWhenJustSmallSegmentOfRequestedSlotIsBlocked() {
         //given
-        ResourceAvailabilityId resourceId = ResourceAvailabilityId.newOne();
+        ResourceId resourceId = ResourceId.newOne();
         TimeSlot oneDay = TimeSlot.createDailyTimeSlotAtUTC(2021, 1, 1);
         Owner owner = Owner.newOne();
         availabilityFacade.createResourceSlots(resourceId, oneDay);
@@ -73,14 +98,19 @@ public class AvailabilityFacadeTest {
 
         //then
         assertFalse(result);
-        //todo check that nothing was changed
+        assertEquals(
+                oneDay.blockedBlocksCount(),
+                resourceAvailabilityRepository
+                        .findAllByResourceIdAndTimeSlotAndResourceStatus(resourceId, oneDay, ResourceStatus.BLOCKED)
+                        .size()
+        );
     }
 
 
     @Test
     void canReleaseAvailability() {
         //given
-        ResourceAvailabilityId resourceId = ResourceAvailabilityId.newOne();
+        ResourceId resourceId = ResourceId.newOne();
         TimeSlot oneDay = TimeSlot.createDailyTimeSlotAtUTC(2021, 1, 1);
         TimeSlot fifteenMinutes = new TimeSlot(oneDay.from(), oneDay.from().plus(15, ChronoUnit.MINUTES));
         Owner owner = Owner.newOne();
@@ -93,13 +123,20 @@ public class AvailabilityFacadeTest {
 
         //then
         assertTrue(result);
-        //todo check can be taken again
+        assertEquals(
+                fifteenMinutes.blockedBlocksCount(),
+                resourceAvailabilityRepository
+                        .findAllByResourceIdResourceStatus(resourceId, ResourceStatus.AVAILABLE)
+                        .stream()
+                        .filter(resourceAvailability -> resourceAvailability.timeSlot().within(fifteenMinutes))
+                        .count()
+        );
     }
 
     @Test
     void cantReleaseEvenWhenJustPartOfSlotIsOwnedByTheRequester() {
         //given
-        ResourceAvailabilityId resourceId = ResourceAvailabilityId.newOne();
+        ResourceId resourceId = ResourceId.newOne();
         TimeSlot jan_1 = TimeSlot.createDailyTimeSlotAtUTC(2021, 1, 1);
         TimeSlot jan_2 = TimeSlot.createDailyTimeSlotAtUTC(2021, 1, 2);
         TimeSlot jan_1_2 = new TimeSlot(jan_1.from(), jan_2.to());
@@ -116,7 +153,12 @@ public class AvailabilityFacadeTest {
 
         //then
         assertFalse(result);
-        //todo check still owned by jan1
+        assertEquals(
+                jan_1_2.blockedBlocksCount(),
+                resourceAvailabilityRepository
+                        .findAllByResourceIdAndTimeSlotAndResourceStatus(resourceId, jan_1_2, ResourceStatus.BLOCKED)
+                        .size()
+        );
     }
 
 

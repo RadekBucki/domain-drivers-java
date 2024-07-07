@@ -10,6 +10,7 @@ import java.util.List;
 import static java.time.temporal.ChronoUnit.DAYS;
 
 public record TimeSlot(Instant from, Instant to) {
+    private static final int BLOCK_SIZE_IN_MINUTES = 15;
 
     public static TimeSlot empty() {
         return new TimeSlot(Instant.EPOCH, Instant.EPOCH);
@@ -82,5 +83,20 @@ public record TimeSlot(Instant from, Instant to) {
 
     public TimeSlot stretch(Duration duration) {
         return new TimeSlot(this.from.minus(duration), this.to.plus(duration));
+    }
+
+    public int blockedBlocksCount() {
+        return (int) (this.duration().toMinutes() / BLOCK_SIZE_IN_MINUTES);
+    }
+
+    public List<TimeSlot> splitToBlocks() {
+        List<TimeSlot> result = new ArrayList<>();
+        Instant current = this.from;
+        while (current.isBefore(this.to)) {
+            Instant next = current.plus(BLOCK_SIZE_IN_MINUTES, java.time.temporal.ChronoUnit.MINUTES);
+            result.add(new TimeSlot(current, next));
+            current = next;
+        }
+        return result;
     }
 }
