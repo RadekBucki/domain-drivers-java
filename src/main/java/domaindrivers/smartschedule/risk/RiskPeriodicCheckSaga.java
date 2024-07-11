@@ -54,7 +54,7 @@ class RiskPeriodicCheckSaga {
     }
 
     boolean areDemandsSatisfied() {
-        return false;
+        return this.missingDemands.equals(Demands.none());
     }
 
     Demands missingDemands() {
@@ -62,31 +62,67 @@ class RiskPeriodicCheckSaga {
     }
 
     RiskPeriodicCheckSagaStep handle(EarningsRecalculated event) {
-        return null;
+        this.earnings = event.earnings();
+        return RiskPeriodicCheckSagaStep.DO_NOTHING;
     }
 
     RiskPeriodicCheckSagaStep handle(ProjectAllocationsDemandsScheduled event) {
-        return null;
+        this.missingDemands = event.missingDemands();
+
+        if (areDemandsSatisfied()) {
+            return RiskPeriodicCheckSagaStep.NOTIFY_ABOUT_DEMANDS_SATISFIED;
+        }
+        return RiskPeriodicCheckSagaStep.DO_NOTHING;
     }
 
     RiskPeriodicCheckSagaStep handle(ProjectAllocationScheduled event) {
+        this.deadline = event.fromTo().to();
         return null;
     }
 
     RiskPeriodicCheckSagaStep handle(ResourceTakenOver event) {
-        return null;
+        if (event.occurredAt().isAfter(deadline)) {
+            return RiskPeriodicCheckSagaStep.DO_NOTHING;
+        }
+        return RiskPeriodicCheckSagaStep.NOTIFY_ABOUT_POSSIBLE_RISK;
     }
 
     RiskPeriodicCheckSagaStep handle(CapabilityReleased event) {
-        return null;
+        return RiskPeriodicCheckSagaStep.DO_NOTHING;
     }
 
     RiskPeriodicCheckSagaStep handle(CapabilitiesAllocated event) {
-        return null;
+        this.missingDemands = event.missingDemands();
+
+        if (this.missingDemands.equals(Demands.none())) {
+            return RiskPeriodicCheckSagaStep.NOTIFY_ABOUT_DEMANDS_SATISFIED;
+        }
+        return RiskPeriodicCheckSagaStep.DO_NOTHING;
     }
 
     RiskPeriodicCheckSagaStep handleWeeklyCheck(Instant when) {
-        return null;
+        if (deadline == null || when.isAfter(deadline) || areDemandsSatisfied()) {
+            return RiskPeriodicCheckSagaStep.DO_NOTHING;
+        }
+
+        if (isDeadlineClose(when) && earnings.greaterThan(RISK_THRESHOLD_VALUE)) {
+            return RiskPeriodicCheckSagaStep.SUGGEST_REPLACEMENT;
+        }
+
+        if (isDeadlineUpcoming(when)) {
+            return RiskPeriodicCheckSagaStep.FIND_AVAILABLE;
+        }
+
+        return RiskPeriodicCheckSagaStep.DO_NOTHING;
+    }
+
+    private boolean isDeadlineUpcoming(Instant when) {
+        return deadline != null && when.isAfter(deadline.minus(Duration.ofDays(UPCOMING_DEADLINE_AVAILABILITY_SEARCH)));
+    }
+
+    private boolean isDeadlineClose(Instant when) {
+        return deadline != null
+                && when.isAfter(deadline.minus(Duration.ofDays(UPCOMING_DEADLINE_REPLACEMENT_SUGGESTION)));
     }
 
     ProjectAllocationsId projectId() {
